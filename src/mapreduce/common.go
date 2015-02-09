@@ -1,6 +1,5 @@
 package mapreduce
 
-import "fmt"
 import "net/rpc"
 
 const (
@@ -69,6 +68,6 @@ func call(srv string, rpcname string,
     return true
   }
 
-  fmt.Println(err)
+  DPrintf("call: %v\n", err)
   return false
 }

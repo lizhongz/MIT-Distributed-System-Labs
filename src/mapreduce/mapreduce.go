@@ -61,9 +61,13 @@ type MapReduce struct {
   stats *list.List
 
   // Map of registered workers that you need to keep up to date
-  Workers map[string]*WorkerInfo 
+  Workers map[string]*WorkerInfo
 
   // add any additional state here
+  MapJobs map[int]*JobInfo // Map of map jobs
+  ReduceJobs map[int]*JobInfo // Map of reduce jobs
+  MapJobChan chan int // Channel to track the completion of map jobs
+  ReduceJobChan chan int // Channel to track the completion of reduce jobs
 }
 
 func InitMapReduce(nmap int, nreduce int,
@@ -78,6 +82,12 @@ func InitMapReduce(nmap int, nreduce int,
   mr.DoneChannel = make(chan bool)
 
   // initialize any additional state here
+  mr.Workers = make(map[string]*WorkerInfo)
+  mr.MapJobs = make(map[int]*JobInfo)
+  mr.ReduceJobs = make(map[int]*JobInfo)
+  mr.MapJobChan = make(chan int)
+  mr.ReduceJobChan = make(chan int)
+
   return mr
 }
 
