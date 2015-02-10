@@ -6,6 +6,7 @@ import "log"
 import "net/rpc"
 import "net"
 import "container/list"
+import "time"
 
 // Worker is a server waiting for DoJob or Shutdown RPCs
 
@@ -49,9 +50,17 @@ func Register(master string, me string) {
   args := &RegisterArgs{}
   args.Worker = me
   var reply RegisterReply
-  ok := call(master, "MapReduce.Register", args, &reply)
-  if ok == false {
-    fmt.Printf("Register: RPC %s register error\n", master)
+  for i := 0; i < 3; i++ {
+    if i != 0 {
+      time.Sleep(1 * time.Millisecond)
+      fmt.Printf("Register: Retry register worker: %s\n", me)
+    }
+    ok := call(master, "MapReduce.Register", args, &reply)
+    if ok == false {
+      fmt.Printf("Register: RPC %s register error\n", master)
+    } else {
+      break
+    }
   }
 }
 

@@ -68,6 +68,8 @@ type MapReduce struct {
   ReduceJobs map[int]*JobInfo // Map of reduce jobs
   MapJobChan chan int // Channel to track the completion of map jobs
   ReduceJobChan chan int // Channel to track the completion of reduce jobs
+  MapJobWaitChan chan int // Channel to track unassigned map jobs
+  ReduceJobWaitChan chan int // Channel to track unaassigned reduce jobs
 }
 
 func InitMapReduce(nmap int, nreduce int,
@@ -87,6 +89,16 @@ func InitMapReduce(nmap int, nreduce int,
   mr.ReduceJobs = make(map[int]*JobInfo)
   mr.MapJobChan = make(chan int)
   mr.ReduceJobChan = make(chan int)
+  mr.MapJobWaitChan = make(chan int, nmap)
+  mr.ReduceJobWaitChan = make(chan int, nreduce)
+
+  for i := 0; i < nMap; i++ {
+    mr.MapJobWaitChan <- i
+  }
+
+  for i := 0; i < nReduce; i++ {
+    mr.ReduceJobWaitChan <- i
+  }
 
   return mr
 }

@@ -1,12 +1,12 @@
 package mapreduce
 import "container/list"
 import "fmt"
-import "log"
 
 const (
   Idle = "idle"
-  InPorcess = "in-process"
+  InProcess = "in-process"
   Completed = "completed"
+  Failed = "failed"
 )
 
 type WorkerState string
@@ -35,7 +35,9 @@ type JobInfo struct {
 
 func (mr *MapReduce) GetIdleWorker() string {
   for addr, wk := range mr.Workers {
+    //fmt.Println("GetIdleWorker: ", addr, " ", wk.state, " out of ", len(mr.Workers))
     if wk.state == Idle {
+      wk.state = InProcess
       return addr
     }
   }
@@ -88,23 +90,26 @@ func (mr *MapReduce) RunMaster() *list.List {
   go func() {
     for cnt := 0; cnt < mr.nMap; cnt++ {
       doneJob := <-mr.MapJobChan
-      mr.MapJobs[doneJob].state = "done"
+      mr.MapJobs[doneJob].state = Done
       addr := mr.MapJobs[doneJob].worker
       mr.Workers[addr].jobs = append(mr.Workers[addr].jobs, doneJob)
-      mr.Workers[addr].state = "idle"
+      mr.Workers[addr].state = Idle
       DPrintf("RunMaster: Map Job %d is done\n", doneJob)
     }
     DPrintf("RunMaster: all Map jobs are done\n")
+    close(mr.MapJobWaitChan)
     mapDone <- true
   }()
 
   // Assign nMap jobs to workers
-  for jobId := 0; jobId < mr.nMap; {
+  for jobId := range mr.MapJobWaitChan {
     addr := mr.GetIdleWorker()
     if addr == "" {
+        mr.MapJobWaitChan <- jobId
         continue;
     }
-    DPrintf("RunMaster: Assign Map job %d to worker %s\n", jobId, addr)
+    //DPrintf("RunMaster: Assign Map job %d to worker %s\n", jobId, addr)
+    fmt.Printf("RunMaster: Assign Map job %d to worker %s\n", jobId, addr)
     arg := &DoJobArgs{mr.file, Map, jobId, nReduce}
     res := &DoJobReply{}
     mr.MapJobs[jobId].worker = addr
@@ -114,11 +119,12 @@ func (mr *MapReduce) RunMaster() *list.List {
       if succ {
         mr.MapJobChan <- arg.JobNumber
       } else {
-        log.Fatalf("Master: failed to execute Map Job %d on woker %s",
+        mr.Workers[addr].state = Failed
+        mr.MapJobWaitChan <- arg.JobNumber
+        fmt.Printf("Master: failed to execute Map Job %d on woker %s\n",
           arg.JobNumber, addr)
       }
     }()
-    jobId++
   }
 
   // Wait all map jobs are finished
@@ -136,20 +142,22 @@ func (mr *MapReduce) RunMaster() *list.List {
   go func() {
     for cnt := 0; cnt < mr.nReduce; cnt++ {
       doneJob := <-mr.ReduceJobChan
-      mr.ReduceJobs[doneJob].state = "done"
+      mr.ReduceJobs[doneJob].state = Done
       addr := mr.ReduceJobs[doneJob].worker
       mr.Workers[addr].jobs = append(mr.Workers[addr].jobs, doneJob + 1000)
-      mr.Workers[addr].state = "idle"
+      mr.Workers[addr].state = Idle
       DPrintf("RunMaster: Reduce Job %d is done\n", doneJob)
     }
     DPrintf("RunMaster: all Reduce jobs are done\n")
+    close(mr.ReduceJobWaitChan)
     reduceDone <- true
   }()
 
   // Assign nReduce jobs to workers
-  for jobId := 0; jobId < mr.nReduce; {
+  for jobId := range mr.ReduceJobWaitChan {
     addr := mr.GetIdleWorker()
     if addr == "" {
+      mr.ReduceJobWaitChan <- jobId
       continue;
     }
     DPrintf("RunMaster: Assign Reduce job %d to worker %s\n", jobId, addr)
@@ -162,10 +170,12 @@ func (mr *MapReduce) RunMaster() *list.List {
       if succ {
         mr.ReduceJobChan <- arg.JobNumber
       } else {
-        log.Fatalf("Master: failed to execute Reduce Job %d on woker %s", arg.JobNumber, addr)
+        mr.Workers[addr].state = Failed
+        mr.ReduceJobWaitChan <- arg.JobNumber
+        fmt.Printf("Master: failed to execute Reduce Job %d on woker %s\n",
+          arg.JobNumber, addr)
       }
     }()
-    jobId++
   }
 
   <-reduceDone
